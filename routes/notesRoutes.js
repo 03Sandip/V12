@@ -6,6 +6,8 @@ const mongoose = require('mongoose');
 
 const Notes = require('../models/notes');
 const Department = require('../models/Department');
+const User = require('../models/User'); // ✅ NEW
+const authMiddleware = require('../middleware/authMiddleware'); // ✅ NEW
 
 // ---------- MULTER (memory storage) ----------
 const storage = multer.memoryStorage();
@@ -86,7 +88,7 @@ function mapNoteForList(n) {
     discountPercent,
     hasImage: !!n.itemPicContentType,
     itemPicContentType: n.itemPicContentType || null,
-    previewLink: n.previewLink || null, // <-- NEW
+    previewLink: n.previewLink || null,
     createdAt: n.createdAt || n.uploadDate || null
   };
 }
@@ -297,7 +299,7 @@ router.post(
         originalPrice: Number(originalPrice) || 0,
         discountPrice: Number(discountPrice) || 0,
         type: type || 'notes',
-        previewLink: previewLink ? String(previewLink).trim() : '' // <-- NEW
+        previewLink: previewLink ? String(previewLink).trim() : ''
       });
 
       if (req.files.itemPic?.[0]) {
@@ -323,7 +325,7 @@ router.post(
         semester: saved.semester,
         originalPrice: saved.originalPrice,
         discountPrice: saved.discountPrice,
-        previewLink: saved.previewLink || null, // <-- NEW
+        previewLink: saved.previewLink || null,
         hasImage: !!saved.itemPicContentType,
         itemPicContentType: saved.itemPicContentType || null,
         createdAt: saved.createdAt
@@ -373,15 +375,92 @@ router.get('/', async (req, res) => {
 });
 
 /**
+ * ✅ NEW: GET /api/notes/my-notes
+ * Return all notes the logged-in user has purchased
+ */
+router.get('/my-notes', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id)
+      .populate({
+        path: 'purchasedNotes',
+        select: '-fileData -itemPicData -__v',
+        populate: { path: 'department', select: 'name' }
+      })
+      .lean()
+      .exec();
+
+    const notes = (user?.purchasedNotes || []).map(mapNoteForList);
+
+    return res.json({
+      success: true,
+      notes
+    });
+  } catch (err) {
+    console.error('Fetch my-notes error:', err);
+    res.status(500).json({ success: false, message: 'Cannot fetch notes' });
+  }
+});
+
+/**
+ * ✅ NEW: GET /api/notes/view/:id
+ * Serve PDF binary inline ONLY if user has purchased the note
+ */
+router.get('/view/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ message: 'Missing id' });
+
+    const user = await User.findById(req.user._id)
+      .select('purchasedNotes')
+      .lean()
+      .exec();
+
+    if (!user) {
+      return res
+        .status(401)
+        .json({ success: false, message: 'User not found' });
+    }
+
+    const hasAccess = (user.purchasedNotes || []).some(
+      (nid) => String(nid) === String(id)
+    );
+
+    if (!hasAccess) {
+      return res
+        .status(403)
+        .json({ success: false, message: 'You do not have access to this note' });
+    }
+
+    const note = await Notes.findById(id)
+      .select('fileData contentType originalName')
+      .exec();
+    if (!note || !note.fileData)
+      return res.status(404).json({ message: 'Not found' });
+
+    res.set({
+      'Content-Type': note.contentType || 'application/pdf',
+      'Content-Disposition': `inline; filename="${
+        note.originalName || 'note.pdf'
+      }"`,
+      'Cache-Control': 'no-store'
+    });
+
+    return res.send(note.fileData);
+  } catch (err) {
+    console.error('View note error:', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+/**
  * GET /api/notes/:id/file
- * Serve PDF binary inline (use findById without lean to ensure Buffer is available)
+ * PUBLIC inline file (keep for backward compatibility / previews)
  */
 router.get('/:id/file', async (req, res) => {
   try {
     const { id } = req.params;
     if (!id) return res.status(400).json({ message: 'Missing id' });
 
-    // use .findById() to get buffers reliably
     const note = await Notes.findById(id)
       .select('fileData contentType originalName')
       .exec();

@@ -107,4 +107,30 @@ router.post("/logout", authMiddleware, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/auth/users
+ * Header: Authorization: Bearer <token>
+ * Returns list of all users (for admin dashboard)
+ */
+router.get("/users", authMiddleware, async (req, res) => {
+  try {
+    // If you later add roles, you can restrict like:
+    // if (req.user.role !== "admin") {
+    //   return res.status(403).json({ message: "Forbidden" });
+    // }
+
+    const users = await User.find({}, "name email phone college createdAt")
+      .sort({ createdAt: -1 })
+      .exec();
+
+    return res.json({
+      success: true,
+      users,
+    });
+  } catch (err) {
+    console.error("Get users error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
 module.exports = router;

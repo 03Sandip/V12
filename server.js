@@ -22,12 +22,14 @@ const departmentRoutes = require(path.join(__dirname, 'routes', 'departmentRoute
 const notesRoutes = require(path.join(__dirname, 'routes', 'notesRoutes'));
 const authRoutes = require(path.join(__dirname, 'routes', 'authRoutes'));
 const paymentRoutes = require(path.join(__dirname, 'routes', 'paymentRoutes')); // 👈 NEW
+const adminPurchaseRoutes = require(path.join(__dirname, 'routes', 'adminPurchaseRoutes'));
 
 // Routes
 app.use('/api/departments', departmentRoutes);
 app.use('/api/notes', notesRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/payment', paymentRoutes); // 👈 /api/payment/create-order, /verify
+app.use('/api/admin', adminPurchaseRoutes);
 
 // Health check
 app.get('/', (req, res) => {

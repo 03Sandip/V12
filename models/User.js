@@ -41,6 +41,14 @@ const UserSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+
+    // ✅ NOTES THE USER HAS PURCHASED
+    purchasedNotes: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Notes", // matches the model name in models/notes.js
+      },
+    ],
   },
   {
     timestamps: true,
