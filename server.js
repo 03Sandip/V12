@@ -23,6 +23,9 @@ const notesRoutes = require(path.join(__dirname, 'routes', 'notesRoutes'));
 const authRoutes = require(path.join(__dirname, 'routes', 'authRoutes'));
 const paymentRoutes = require(path.join(__dirname, 'routes', 'paymentRoutes')); // 👈 NEW
 const adminPurchaseRoutes = require(path.join(__dirname, 'routes', 'adminPurchaseRoutes'));
+const couponRoutes = require(path.join(__dirname, 'routes', 'couponRoutes'));
+
+
 
 // Routes
 app.use('/api/departments', departmentRoutes);
@@ -30,6 +33,8 @@ app.use('/api/notes', notesRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/payment', paymentRoutes); // 👈 /api/payment/create-order, /verify
 app.use('/api/admin', adminPurchaseRoutes);
+app.use('/api/admin/coupons', adminCouponRoutes);
+
 
 // Health check
 app.get('/', (req, res) => {

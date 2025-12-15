@@ -133,4 +133,104 @@ router.get("/users", authMiddleware, async (req, res) => {
   }
 });
 
+/* =========================
+   FORGOT PASSWORD ENDPOINTS
+   ========================= */
+
+/**
+ * POST /api/auth/check-email
+ * Body: { email }
+ * Response:
+ *   200 { exists: true,  message: 'Email found.' }
+ *   200 { exists: false, message: 'No user found with this email.' }
+ */
+router.post("/check-email", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        exists: false,
+        message: "Email is required.",
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail }).exec();
+
+    if (!user) {
+      return res.status(200).json({
+        exists: false,
+        message: "No user found with this email.",
+      });
+    }
+
+    return res.status(200).json({
+      exists: true,
+      message: "Email found.",
+    });
+  } catch (err) {
+    console.error("Error in /check-email:", err);
+    return res.status(500).json({
+      exists: false,
+      message: "Server error. Please try again.",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/reset-password
+ * Body: { email, newPassword }
+ * Uses your UserSchema.pre("save") to hash the new password.
+ * Also clears activeSessionToken so user is logged out everywhere.
+ */
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+
+    if (!email || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and new password are required.",
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters long.",
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail }).exec();
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    // Your pre('save') hook will hash this automatically
+    user.password = newPassword;
+
+    // Optional: force logout on all devices
+    user.activeSessionToken = null;
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Password updated successfully.",
+    });
+  } catch (err) {
+    console.error("Error in /reset-password:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error. Please try again.",
+    });
+  }
+});
+
 module.exports = router;

@@ -3,6 +3,7 @@ const express = require('express');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const User = require('../models/User');
+const Coupon = require('../models/Coupon'); // 👈 IMPORTANT
 const authMiddleware = require('../middleware/authMiddleware');
 
 const router = express.Router();
@@ -50,14 +51,18 @@ router.post('/create-order', async (req, res) => {
 
 // -----------------------------------------
 // 2️⃣ VERIFY PAYMENT + SAVE PURCHASED NOTES
+//    + INCREMENT COUPON USED COUNT
 // -----------------------------------------
 router.post('/verify', authMiddleware, async (req, res) => {
   try {
+    console.log('[/payment/verify] BODY =', req.body);
+
     const {
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature,
       cart = [],
+      appliedCouponCode,  // 👈 from frontend
     } = req.body;
 
     // Validate required fields
@@ -77,18 +82,21 @@ router.post('/verify', authMiddleware, async (req, res) => {
       .digest('hex');
 
     const isValid = expectedSignature === razorpay_signature;
+    console.log('[/payment/verify] isValid =', isValid);
 
-    // if (!isValid) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: 'Invalid payment signature',
-    //   });
-    // }
+    if (!isValid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid payment signature',
+      });
+    }
 
     // Step 2: Extract purchased note IDs from cart
     const noteIds = cart
       .map((item) => item._id || item.id)
       .filter(Boolean);
+
+    console.log('[/payment/verify] noteIds =', noteIds);
 
     // Step 3: Save purchased notes to user account
     if (noteIds.length > 0) {
@@ -99,10 +107,29 @@ router.post('/verify', authMiddleware, async (req, res) => {
       );
     }
 
-    // Step 4: Success response
+    // Step 4: If a coupon was used, increment its usedCount
+    let updatedCoupon = null;
+
+    if (appliedCouponCode) {
+      const upperCode = String(appliedCouponCode).toUpperCase();
+      console.log('[/payment/verify] Coupon used =', upperCode);
+
+      updatedCoupon = await Coupon.findOneAndUpdate(
+        { code: upperCode },
+        { $inc: { usedCount: 1 } },
+        { new: true }
+      );
+
+      console.log('[/payment/verify] Updated coupon =', updatedCoupon);
+    } else {
+      console.log('[/payment/verify] No coupon used in this payment');
+    }
+
+    // Step 5: Success response
     return res.json({
       success: true,
       message: 'Payment verified successfully. Notes unlocked.',
+      coupon: updatedCoupon, // 👈 so you can see in frontend if it updated
     });
   } catch (error) {
     console.error('Razorpay verify error:', error);

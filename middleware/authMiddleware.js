@@ -3,13 +3,25 @@ const User = require("../models/User");
 
 module.exports = async function (req, res, next) {
   try {
-    const authHeader = req.headers.authorization || "";
-    const token = authHeader.replace("Bearer ", "").trim();
+    let token = null;
 
+    // 1) Try Authorization header
+    const authHeader = req.headers.authorization || "";
+    if (authHeader.startsWith("Bearer ")) {
+      token = authHeader.replace("Bearer ", "").trim();
+    }
+
+    // 2) If no header token, try query param ?token=...
+    if (!token && req.query && typeof req.query.token === "string") {
+      token = req.query.token.trim();
+    }
+
+    // 3) If still no token → unauthorized
     if (!token) {
       return res.status(401).json({ message: "No token, unauthorized" });
     }
 
+    // 4) Find user with this active session token
     const user = await User.findOne({ activeSessionToken: token }).exec();
 
     // If no matching session = logged out or logged in from another device
@@ -19,6 +31,7 @@ module.exports = async function (req, res, next) {
       });
     }
 
+    // Attach user to request and continue
     req.user = user;
     next();
   } catch (err) {
