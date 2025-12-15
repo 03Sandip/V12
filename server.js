@@ -15,26 +15,25 @@ const app = express();
 
 // Middlewares
 app.use(cors());
-app.use(express.json()); // to parse JSON bodies
+app.use(express.json());
 
 // Route files
-const departmentRoutes = require(path.join(__dirname, 'routes', 'departmentRoutes'));
-const notesRoutes = require(path.join(__dirname, 'routes', 'notesRoutes'));
-const authRoutes = require(path.join(__dirname, 'routes', 'authRoutes'));
-const paymentRoutes = require(path.join(__dirname, 'routes', 'paymentRoutes')); // 👈 NEW
-const adminPurchaseRoutes = require(path.join(__dirname, 'routes', 'adminPurchaseRoutes'));
-const couponRoutes = require(path.join(__dirname, 'routes', 'couponRoutes'));
-
-
+const departmentRoutes = require('./routes/departmentRoutes');
+const notesRoutes = require('./routes/notesRoutes');
+const authRoutes = require('./routes/authRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
+const adminPurchaseRoutes = require('./routes/adminPurchaseRoutes');
+const couponRoutes = require('./routes/couponRoutes');
 
 // Routes
 app.use('/api/departments', departmentRoutes);
 app.use('/api/notes', notesRoutes);
 app.use('/api/auth', authRoutes);
-app.use('/api/payment', paymentRoutes); // 👈 /api/payment/create-order, /verify
+app.use('/api/payment', paymentRoutes);
 app.use('/api/admin', adminPurchaseRoutes);
-app.use('/api/admin/coupons', adminCouponRoutes);
 
+// ✅ Admin-only coupons
+app.use('/api/admin/coupons', couponRoutes);
 
 // Health check
 app.get('/', (req, res) => {
