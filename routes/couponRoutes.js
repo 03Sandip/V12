@@ -1,54 +1,47 @@
-// routes/couponRoutes.js
 const express = require("express");
 const Coupon = require("../models/Coupon");
 
 const router = express.Router();
 
 /* =========================================================
-   1) ADMIN CRUD ROUTES (NO AUTH IN THIS VERSION)
+   1) ADMIN CRUD ROUTES
+   URL: /api/admin/coupons
    ========================================================= */
 
 /**
- * GET /api/coupons
- * Get all coupons
+ * GET /api/admin/coupons
  */
-router.get("/", async (req, res) => {
+router.get("/admin/coupons", async (req, res) => {
   try {
     const coupons = await Coupon.find().sort({ createdAt: -1 });
     res.json({ success: true, coupons });
   } catch (err) {
-    console.error("Get coupons error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch coupons",
-    });
+    console.error(err);
+    res.status(500).json({ success: false, message: "Failed to fetch coupons" });
   }
 });
 
 /**
- * POST /api/coupons
- * Create coupon
+ * POST /api/admin/coupons
  */
-router.post("/", async (req, res) => {
+router.post("/admin/coupons", async (req, res) => {
   try {
     let { code, discountType, discountValue, maxUses, isActive, expiresAt } =
       req.body;
 
     if (!code || discountValue === undefined) {
-      return res.status(400).json({
-        success: false,
-        message: "Code and discount value are required",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "Code & discount required" });
     }
 
     code = code.trim().toUpperCase();
 
-    const existing = await Coupon.findOne({ code });
-    if (existing) {
-      return res.status(400).json({
-        success: false,
-        message: "Coupon code already exists",
-      });
+    const exists = await Coupon.findOne({ code });
+    if (exists) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Coupon already exists" });
     }
 
     const coupon = await Coupon.create({
@@ -56,143 +49,79 @@ router.post("/", async (req, res) => {
       discountType: discountType || "PERCENT",
       discountValue: Number(discountValue),
       maxUses: Number(maxUses || 0),
-      isActive: isActive === undefined ? true : Boolean(isActive),
+      isActive: isActive !== false,
       expiresAt: expiresAt ? new Date(expiresAt) : null,
     });
 
-    res.json({
-      success: true,
-      message: "Coupon created",
-      coupon,
-    });
+    res.json({ success: true, message: "Coupon created", coupon });
   } catch (err) {
-    console.error("Create coupon error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Failed to create coupon",
-    });
+    console.error(err);
+    res.status(500).json({ success: false, message: "Create failed" });
   }
 });
 
 /**
- * PUT /api/coupons/:id
- * Update coupon
+ * PUT /api/admin/coupons/:id
  */
-router.put("/:id", async (req, res) => {
+router.put("/admin/coupons/:id", async (req, res) => {
   try {
-    const { id } = req.params;
-    let {
-      code,
-      discountType,
-      discountValue,
-      maxUses,
-      isActive,
-      expiresAt,
-    } = req.body;
-
-    const update = {};
-
-    if (code) update.code = code.trim().toUpperCase();
-    if (discountType) update.discountType = discountType;
-    if (discountValue !== undefined) update.discountValue = Number(discountValue);
-    if (maxUses !== undefined) update.maxUses = Number(maxUses);
-    if (typeof isActive === "boolean") update.isActive = isActive;
-    if (expiresAt !== undefined) {
-      update.expiresAt = expiresAt ? new Date(expiresAt) : null;
-    }
-
-    const coupon = await Coupon.findByIdAndUpdate(id, update, { new: true });
+    const coupon = await Coupon.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+    });
 
     if (!coupon) {
-      return res.status(404).json({
-        success: false,
-        message: "Coupon not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Coupon not found" });
     }
 
-    res.json({
-      success: true,
-      message: "Coupon updated",
-      coupon,
-    });
+    res.json({ success: true, message: "Coupon updated", coupon });
   } catch (err) {
-    console.error("Update coupon error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Failed to update coupon",
-    });
+    console.error(err);
+    res.status(500).json({ success: false, message: "Update failed" });
   }
 });
 
 /**
- * DELETE /api/coupons/:id
- * Delete coupon
+ * DELETE /api/admin/coupons/:id
  */
-router.delete("/:id", async (req, res) => {
+router.delete("/admin/coupons/:id", async (req, res) => {
   try {
-    const { id } = req.params;
+    const coupon = await Coupon.findByIdAndDelete(req.params.id);
 
-    const coupon = await Coupon.findByIdAndDelete(id);
     if (!coupon) {
-      return res.status(404).json({
-        success: false,
-        message: "Coupon not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Coupon not found" });
     }
 
-    res.json({
-      success: true,
-      message: "Coupon deleted",
-    });
+    res.json({ success: true, message: "Coupon deleted" });
   } catch (err) {
-    console.error("Delete coupon error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Failed to delete coupon",
-    });
+    console.error(err);
+    res.status(500).json({ success: false, message: "Delete failed" });
   }
 });
 
 /* =========================================================
-   2) VALIDATE ROUTE (USED BY BUY-NOW PAGE)
+   2) BUY-NOW VALIDATION
+   URL: /api/coupons/validate
    ========================================================= */
 
-/**
- * POST /api/coupons/validate
- * Body: { code, subtotal }
- */
-router.post("/validate", async (req, res) => {
+router.post("/coupons/validate", async (req, res) => {
   try {
     let { code, subtotal } = req.body;
 
-    if (!code || typeof code !== "string") {
-      return res.status(400).json({
-        success: false,
-        message: "Coupon code is required",
-      });
-    }
-
-    code = code.trim().toUpperCase();
+    code = String(code || "").trim().toUpperCase();
     subtotal = Number(subtotal || 0);
 
-    if (subtotal <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid subtotal amount",
-      });
+    if (!code || subtotal <= 0) {
+      return res.json({ success: false, message: "Invalid request" });
     }
 
     const coupon = await Coupon.findOne({ code });
 
-    if (!coupon) {
-      return res.json({
-        success: false,
-        message: "Invalid coupon code",
-      });
-    }
-
-    if (!coupon.isActive) {
-      return res.json({ success: false, message: "Coupon is deactivated" });
+    if (!coupon || !coupon.isActive) {
+      return res.json({ success: false, message: "Invalid coupon" });
     }
 
     if (coupon.expiresAt && coupon.expiresAt < new Date()) {
@@ -200,83 +129,47 @@ router.post("/validate", async (req, res) => {
     }
 
     if (coupon.maxUses > 0 && coupon.usedCount >= coupon.maxUses) {
-      return res.json({ success: false, message: "Max usage reached" });
+      return res.json({ success: false, message: "Usage limit reached" });
     }
 
-    let discountAmount = 0;
-    if (coupon.discountType === "PERCENT") {
-      discountAmount = (subtotal * coupon.discountValue) / 100;
-    } else {
-      discountAmount = coupon.discountValue;
-    }
+    let discount =
+      coupon.discountType === "PERCENT"
+        ? (subtotal * coupon.discountValue) / 100
+        : coupon.discountValue;
 
-    discountAmount = Math.min(discountAmount, subtotal);
-    const payable = subtotal - discountAmount;
+    discount = Math.min(discount, subtotal);
 
     res.json({
       success: true,
-      message: "Coupon applied",
       code: coupon.code,
-      discountType: coupon.discountType,
-      discountValue: coupon.discountValue,
-      discountAmount,
-      payable,
+      discountAmount: discount,
+      payable: subtotal - discount,
     });
   } catch (err) {
-    console.error("Validate coupon error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Failed to validate coupon",
-    });
+    console.error(err);
+    res.status(500).json({ success: false, message: "Validation failed" });
   }
 });
 
 /* =========================================================
-   3) MARK-USED ROUTE (CALLED AFTER SUCCESSFUL PAYMENT)
+   3) MARK COUPON AS USED
+   URL: /api/coupons/mark-used
    ========================================================= */
 
-/**
- * POST /api/coupons/mark-used
- * Body: { code }
- * Increments usedCount by 1
- */
-router.post("/mark-used", async (req, res) => {
+router.post("/coupons/mark-used", async (req, res) => {
   try {
-    let { code } = req.body;
+    const code = String(req.body.code || "").trim().toUpperCase();
 
     if (!code) {
-      return res.status(400).json({
-        success: false,
-        message: "Coupon code is required",
-      });
+      return res.json({ success: false, message: "Code required" });
     }
 
-    code = code.trim().toUpperCase();
+    await Coupon.updateOne({ code }, { $inc: { usedCount: 1 } });
 
-    const coupon = await Coupon.findOneAndUpdate(
-      { code },
-      { $inc: { usedCount: 1 } },
-      { new: true }
-    );
-
-    if (!coupon) {
-      return res.json({
-        success: false,
-        message: "Coupon not found",
-      });
-    }
-
-    return res.json({
-      success: true,
-      message: "Coupon usage recorded",
-      coupon,
-    });
+    res.json({ success: true, message: "Usage recorded" });
   } catch (err) {
-    console.error("mark-used error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Failed to update usage",
-    });
+    console.error(err);
+    res.status(500).json({ success: false, message: "Update failed" });
   }
 });
 

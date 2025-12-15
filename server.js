@@ -2,13 +2,9 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
-const path = require('path');
 const connectDB = require('./config/db');
 
-// Load env
 dotenv.config();
-
-// Connect to DB
 connectDB();
 
 const app = express();
@@ -32,8 +28,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/admin', adminPurchaseRoutes);
 
-// ✅ Admin-only coupons
-app.use('/api/admin/coupons', couponRoutes);
+// ✅ Coupons (admin + public handled inside router)
+app.use('/api', couponRoutes);
 
 // Health check
 app.get('/', (req, res) => {
