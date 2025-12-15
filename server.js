@@ -20,6 +20,7 @@ const authRoutes = require('./routes/authRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const adminPurchaseRoutes = require('./routes/adminPurchaseRoutes');
 const couponRoutes = require('./routes/couponRoutes');
+const articleRoutes = require("./routes/articleRoutes"); // ✅ NEW
 
 // Routes
 app.use('/api/departments', departmentRoutes);
@@ -28,8 +29,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/admin', adminPurchaseRoutes);
 
-// ✅ Coupons (admin + public handled inside router)
+// Coupons (admin + public handled inside router)
 app.use('/api', couponRoutes);
+
+// 📝 Articles (admin + user)
+app.use("/api", articleRoutes); // ✅ ADDED HERE
 
 // Health check
 app.get('/', (req, res) => {
@@ -37,4 +41,6 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () =>
+  console.log(`Server running on port ${PORT}`)
+);
