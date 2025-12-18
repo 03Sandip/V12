@@ -24,7 +24,7 @@ function compressPDF(inputPath, level = "medium") {
 
     exec(
       `qpdf ${levels[level]} "${inputPath}" "${outputPath}"`,
-      (err) => {
+      err => {
         if (err) return cleanup(err);
 
         const buffer = fs.readFileSync(outputPath);
@@ -35,7 +35,6 @@ function compressPDF(inputPath, level = "medium") {
     function cleanup(err, buffer) {
       fs.existsSync(inputPath) && fs.unlinkSync(inputPath);
       fs.existsSync(outputPath) && fs.unlinkSync(outputPath);
-
       err ? reject(err) : resolve(buffer);
     }
   });
@@ -43,9 +42,6 @@ function compressPDF(inputPath, level = "medium") {
 
 /* =====================================================
    ANY FORMAT → PDF
-   INPUT  : multer file
-   OUTPUT : Buffer
-   Supports: HTML, JPG, PNG, TXT
 ===================================================== */
 async function convertToPDF(file) {
   const ext = path.extname(file.originalname).toLowerCase();
@@ -68,7 +64,6 @@ async function convertToPDF(file) {
 
     await browser.close();
     fs.unlinkSync(file.path);
-
     return buffer;
   }
 
@@ -111,8 +106,6 @@ async function convertToPDF(file) {
 
 /* =====================================================
    PDF MERGE
-   INPUT  : array of multer files
-   OUTPUT : Buffer
 ===================================================== */
 async function mergePDFs(files) {
   const merged = await PDFDocument.create();
@@ -121,25 +114,55 @@ async function mergePDFs(files) {
     const pdf = await PDFDocument.load(fs.readFileSync(f.path));
     const pages = await merged.copyPages(pdf, pdf.getPageIndices());
     pages.forEach(p => merged.addPage(p));
-    fs.unlinkSync(f.path); // delete immediately
+    fs.unlinkSync(f.path);
   }
 
   return Buffer.from(await merged.save());
 }
 
 /* =====================================================
-   PDF SPLIT
-   INPUT  : multer file
-   OUTPUT : Array of Buffers (each page)
+   PDF SPLIT (WITH PAGE RANGE SUPPORT)
+   range examples:
+   - "1-3"
+   - "1-3,5,8"
+   - empty → all pages
 ===================================================== */
-async function splitPDF(file) {
+async function splitPDF(file, range) {
   const bytes = fs.readFileSync(file.path);
   const pdf = await PDFDocument.load(bytes);
-  const pages = pdf.getPageIndices();
+  const totalPages = pdf.getPageCount();
+
+  let pageIndexes = [];
+
+  // If range is provided
+  if (range) {
+    const parts = range.split(",");
+
+    for (const part of parts) {
+      if (part.includes("-")) {
+        const [start, end] = part.split("-").map(n => parseInt(n, 10));
+        for (let i = start; i <= end; i++) {
+          if (i >= 1 && i <= totalPages) {
+            pageIndexes.push(i - 1);
+          }
+        }
+      } else {
+        const page = parseInt(part, 10);
+        if (page >= 1 && page <= totalPages) {
+          pageIndexes.push(page - 1);
+        }
+      }
+    }
+  } else {
+    pageIndexes = pdf.getPageIndices();
+  }
+
+  // Remove duplicates
+  pageIndexes = [...new Set(pageIndexes)];
 
   const outputs = [];
 
-  for (const i of pages) {
+  for (const i of pageIndexes) {
     const newPdf = await PDFDocument.create();
     const [page] = await newPdf.copyPages(pdf, [i]);
     newPdf.addPage(page);
