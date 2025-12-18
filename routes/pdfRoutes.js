@@ -11,15 +11,18 @@ const {
 const router = express.Router();
 
 /* =============================
-   Multer → temp only
+   Multer → TEMP ONLY (/tmp)
+   No permanent storage
 ============================= */
 const upload = multer({
   dest: "/tmp",
-  limits: { fileSize: 25 * 1024 * 1024 } // 25MB
+  limits: {
+    fileSize: 25 * 1024 * 1024 // 25 MB
+  }
 });
 
 /* =============================
-   PDF COMPRESS
+   PDF COMPRESS (PUBLIC)
 ============================= */
 router.post("/pdf/compress", upload.single("file"), async (req, res) => {
   try {
@@ -35,16 +38,17 @@ router.post("/pdf/compress", upload.single("file"), async (req, res) => {
       "Content-Disposition",
       "attachment; filename=compressed.pdf"
     );
+    res.setHeader("Content-Length", buffer.length);
 
     res.send(buffer);
   } catch (err) {
     console.error("PDF compress error:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Failed to compress PDF" });
   }
 });
 
 /* =============================
-   ANY FORMAT → PDF
+   ANY FORMAT → PDF (PUBLIC)
 ============================= */
 router.post("/pdf/convert", upload.single("file"), async (req, res) => {
   try {
@@ -59,16 +63,17 @@ router.post("/pdf/convert", upload.single("file"), async (req, res) => {
       "Content-Disposition",
       "attachment; filename=converted.pdf"
     );
+    res.setHeader("Content-Length", buffer.length);
 
     res.send(buffer);
   } catch (err) {
     console.error("PDF convert error:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Failed to convert file to PDF" });
   }
 });
 
 /* =============================
-   PDF MERGE
+   PDF MERGE (PUBLIC)
 ============================= */
 router.post("/pdf/merge", upload.array("files", 10), async (req, res) => {
   try {
@@ -85,16 +90,18 @@ router.post("/pdf/merge", upload.array("files", 10), async (req, res) => {
       "Content-Disposition",
       "attachment; filename=merged.pdf"
     );
+    res.setHeader("Content-Length", buffer.length);
 
     res.send(buffer);
   } catch (err) {
     console.error("PDF merge error:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Failed to merge PDFs" });
   }
 });
 
 /* =============================
-   PDF SPLIT
+   PDF SPLIT (PUBLIC)
+   Returns FIRST PAGE (safe default)
 ============================= */
 router.post("/pdf/split", upload.single("file"), async (req, res) => {
   try {
@@ -104,19 +111,29 @@ router.post("/pdf/split", upload.single("file"), async (req, res) => {
 
     const pages = await splitPDF(req.file);
 
-    // For now: return first page as PDF
-    // (Later you can zip all pages)
+    if (!pages.length) {
+      return res.status(400).json({ error: "No pages found in PDF" });
+    }
+
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
       "attachment; filename=page-1.pdf"
     );
+    res.setHeader("Content-Length", pages[0].length);
 
     res.send(pages[0]);
   } catch (err) {
     console.error("PDF split error:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Failed to split PDF" });
   }
+});
+
+/* =============================
+   OPTIONS (CORS preflight safety)
+============================= */
+router.options("/pdf/*", (req, res) => {
+  res.sendStatus(200);
 });
 
 module.exports = router;

@@ -3,6 +3,11 @@ const User = require("../models/User");
 
 module.exports = async function (req, res, next) {
   try {
+    // ✅ Allow CORS preflight
+    if (req.method === "OPTIONS") {
+      return next();
+    }
+
     let token = null;
 
     // 1) Try Authorization header
@@ -24,7 +29,7 @@ module.exports = async function (req, res, next) {
     // 4) Find user with this active session token
     const user = await User.findOne({ activeSessionToken: token }).exec();
 
-    // If no matching session = logged out or logged in from another device
+    // If no matching session
     if (!user) {
       return res.status(401).json({
         message: "Session expired. You were logged in on another device.",
