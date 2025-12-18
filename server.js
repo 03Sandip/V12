@@ -20,7 +20,8 @@ const authRoutes = require('./routes/authRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const adminPurchaseRoutes = require('./routes/adminPurchaseRoutes');
 const couponRoutes = require('./routes/couponRoutes');
-const articleRoutes = require("./routes/articleRoutes"); // ✅ NEW
+const articleRoutes = require("./routes/articleRoutes");
+const pdfRoutes = require("./routes/pdfRoutes"); // ✅ PDF ADDED
 
 // Routes
 app.use('/api/departments', departmentRoutes);
@@ -28,12 +29,9 @@ app.use('/api/notes', notesRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/admin', adminPurchaseRoutes);
-
-// Coupons (admin + public handled inside router)
 app.use('/api', couponRoutes);
-
-// 📝 Articles (admin + user)
-app.use("/api", articleRoutes); // ✅ ADDED HERE
+app.use('/api', articleRoutes);
+app.use('/api', pdfRoutes); // ✅ REGISTERED
 
 // Health check
 app.get('/', (req, res) => {
