@@ -8,39 +8,68 @@ const { PDFDocument } = require("pdf-lib");
 
 /* =====================================================
    PDF COMPRESSION (qpdf)
-   level: low | medium | high
+   INPUT  : multer temp file path
+   OUTPUT : Buffer (no file saved)
+   level  : low | medium | high
 ===================================================== */
-async function compressPDF(inputPath, outputPath, level = "medium") {
-  const levels = {
-    low: "--stream-data=compress",
-    medium: "--stream-data=compress --object-streams=generate",
-    high: "--stream-data=compress --object-streams=generate --linearize"
-  };
-
+function compressPDF(inputPath, level = "medium") {
   return new Promise((resolve, reject) => {
+    const outputPath = path.join("/tmp", `compressed-${Date.now()}.pdf`);
+
+    const levels = {
+      low: "--stream-data=compress",
+      medium: "--stream-data=compress --object-streams=generate",
+      high: "--stream-data=compress --object-streams=generate --linearize"
+    };
+
     exec(
       `qpdf ${levels[level]} "${inputPath}" "${outputPath}"`,
-      err => (err ? reject(err) : resolve())
+      (err) => {
+        if (err) return cleanup(err);
+
+        const buffer = fs.readFileSync(outputPath);
+        cleanup(null, buffer);
+      }
     );
+
+    function cleanup(err, buffer) {
+      fs.existsSync(inputPath) && fs.unlinkSync(inputPath);
+      fs.existsSync(outputPath) && fs.unlinkSync(outputPath);
+
+      err ? reject(err) : resolve(buffer);
+    }
   });
 }
 
 /* =====================================================
    ANY FORMAT → PDF
+   INPUT  : multer file
+   OUTPUT : Buffer
    Supports: HTML, JPG, PNG, TXT
 ===================================================== */
-async function convertToPDF(file, outputPath) {
+async function convertToPDF(file) {
   const ext = path.extname(file.originalname).toLowerCase();
 
   // ---------- HTML → PDF ----------
   if (ext === ".html") {
     const html = fs.readFileSync(file.path, "utf8");
-    const browser = await puppeteer.launch();
+
+    const browser = await puppeteer.launch({
+      args: ["--no-sandbox", "--disable-setuid-sandbox"]
+    });
+
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
-    await page.pdf({ path: outputPath, format: "A4", printBackground: true });
+
+    const buffer = await page.pdf({
+      format: "A4",
+      printBackground: true
+    });
+
     await browser.close();
-    return;
+    fs.unlinkSync(file.path);
+
+    return buffer;
   }
 
   // ---------- IMAGE → PDF ----------
@@ -56,14 +85,15 @@ async function convertToPDF(file, outputPath) {
     const page = pdf.addPage([image.width, image.height]);
     page.drawImage(image, { x: 0, y: 0 });
 
-    fs.writeFileSync(outputPath, await pdf.save());
-    return;
+    fs.unlinkSync(file.path);
+    return Buffer.from(await pdf.save());
   }
 
   // ---------- TEXT → PDF ----------
   if (ext === ".txt") {
     const pdf = await PDFDocument.create();
     const page = pdf.addPage();
+
     page.drawText(fs.readFileSync(file.path, "utf8"), {
       x: 40,
       y: page.getHeight() - 40,
@@ -71,47 +101,52 @@ async function convertToPDF(file, outputPath) {
       maxWidth: page.getWidth() - 80
     });
 
-    fs.writeFileSync(outputPath, await pdf.save());
-    return;
+    fs.unlinkSync(file.path);
+    return Buffer.from(await pdf.save());
   }
 
+  fs.unlinkSync(file.path);
   throw new Error("Unsupported file format");
 }
 
 /* =====================================================
    PDF MERGE
+   INPUT  : array of multer files
+   OUTPUT : Buffer
 ===================================================== */
-async function mergePDFs(files, outputPath) {
+async function mergePDFs(files) {
   const merged = await PDFDocument.create();
 
-  for (const file of files) {
-    const pdf = await PDFDocument.load(fs.readFileSync(file.path));
+  for (const f of files) {
+    const pdf = await PDFDocument.load(fs.readFileSync(f.path));
     const pages = await merged.copyPages(pdf, pdf.getPageIndices());
     pages.forEach(p => merged.addPage(p));
+    fs.unlinkSync(f.path); // delete immediately
   }
 
-  fs.writeFileSync(outputPath, await merged.save());
+  return Buffer.from(await merged.save());
 }
 
 /* =====================================================
-   PDF SPLIT (split after page number)
+   PDF SPLIT
+   INPUT  : multer file
+   OUTPUT : Array of Buffers (each page)
 ===================================================== */
-async function splitPDF(inputPath, splitAfter) {
-  const bytes = fs.readFileSync(inputPath);
+async function splitPDF(file) {
+  const bytes = fs.readFileSync(file.path);
   const pdf = await PDFDocument.load(bytes);
-  const totalPages = pdf.getPageCount();
+  const pages = pdf.getPageIndices();
+
   const outputs = [];
 
-  for (let i = splitAfter; i < totalPages; i++) {
+  for (const i of pages) {
     const newPdf = await PDFDocument.create();
     const [page] = await newPdf.copyPages(pdf, [i]);
     newPdf.addPage(page);
-
-    const out = `output/page-${i + 1}.pdf`;
-    fs.writeFileSync(out, await newPdf.save());
-    outputs.push(out);
+    outputs.push(Buffer.from(await newPdf.save()));
   }
 
+  fs.unlinkSync(file.path);
   return outputs;
 }
 
