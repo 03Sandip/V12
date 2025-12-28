@@ -21,14 +21,16 @@ router.post(
         correctAnswer: JSON.parse(req.body.correctAnswer)
       };
 
+      // ✅ Cloudinary image handling
       if (req.file) {
-        data.image = req.file.path;
-        data.imagePublicId = req.file.filename;
+        data.image = req.file.path;              // FULL Cloudinary URL
+        data.imagePublicId = req.file.filename; // Cloudinary public_id
       }
 
       const q = await Question.create(data);
       res.status(201).json(q);
     } catch (err) {
+      console.error(err);
       res.status(500).json({ error: err.message });
     }
   }
@@ -43,33 +45,41 @@ router.put(
   async (req, res) => {
     try {
       const Question = QuestionModel();
-      const q = await Question.findById(req.params.id);
+      const existing = await Question.findById(req.params.id);
 
-      if (!q) return res.status(404).json({ error: "Not found" });
-
-      if (req.file && q.imagePublicId) {
-        await cloudinary.uploader.destroy(q.imagePublicId);
+      if (!existing) {
+        return res.status(404).json({ error: "Not found" });
       }
 
-      if (req.body.options)
-        req.body.options = JSON.parse(req.body.options);
+      // 🔥 Delete old Cloudinary image if new one uploaded
+      if (req.file && existing.imagePublicId) {
+        await cloudinary.uploader.destroy(existing.imagePublicId);
+      }
 
-      if (req.body.correctAnswer)
-        req.body.correctAnswer = JSON.parse(req.body.correctAnswer);
+      const data = { ...req.body };
+
+      if (data.options) {
+        data.options = JSON.parse(data.options);
+      }
+
+      if (data.correctAnswer) {
+        data.correctAnswer = JSON.parse(data.correctAnswer);
+      }
 
       if (req.file) {
-        req.body.image = req.file.path;
-        req.body.imagePublicId = req.file.filename;
+        data.image = req.file.path;              // FULL URL
+        data.imagePublicId = req.file.filename; // public_id
       }
 
       const updated = await Question.findByIdAndUpdate(
         req.params.id,
-        req.body,
+        data,
         { new: true }
       );
 
       res.json(updated);
     } catch (err) {
+      console.error(err);
       res.status(500).json({ error: err.message });
     }
   }
@@ -83,8 +93,11 @@ router.delete("/admin/question/:id", async (req, res) => {
     const Question = QuestionModel();
     const q = await Question.findById(req.params.id);
 
-    if (!q) return res.status(404).json({ error: "Not found" });
+    if (!q) {
+      return res.status(404).json({ error: "Not found" });
+    }
 
+    // 🔥 Delete Cloudinary image
     if (q.imagePublicId) {
       await cloudinary.uploader.destroy(q.imagePublicId);
     }
@@ -92,6 +105,7 @@ router.delete("/admin/question/:id", async (req, res) => {
     await q.deleteOne();
     res.json({ success: true });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -109,7 +123,9 @@ router.get("/questions", async (req, res) => {
       if (req.query[k]) filter[k] = req.query[k];
     });
 
-    if (req.query.year) filter.year = Number(req.query.year);
+    if (req.query.year) {
+      filter.year = Number(req.query.year);
+    }
 
     const data = await Question
       .find(filter)
@@ -117,36 +133,32 @@ router.get("/questions", async (req, res) => {
 
     res.json(data);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
 /* =========================================================
-   USER: GET SUBJECTS (DEPARTMENT-WISE) ✅ FIXED
+   USER: GET SUBJECTS
    /api/questions/subjects?department=CSE
 ========================================================= */
 router.get("/questions/subjects", async (req, res) => {
   try {
     const { department } = req.query;
-
-    if (!department) {
-      return res.json([]);
-    }
+    if (!department) return res.json([]);
 
     const Question = QuestionModel();
-
-    const subjects = await Question.distinct("subject", {
-      department
-    });
+    const subjects = await Question.distinct("subject", { department });
 
     res.json(subjects.filter(Boolean));
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
 /* =========================================================
-   USER: GET YEARS (OPTIONAL SUBJECT + DEPARTMENT)
+   USER: GET YEARS
    /api/questions/years?department=CSE&subject=DS
 ========================================================= */
 router.get("/questions/years", async (req, res) => {
@@ -160,6 +172,7 @@ router.get("/questions/years", async (req, res) => {
     const years = await Question.distinct("year", filter);
     res.json(years.sort((a, b) => b - a));
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -180,13 +193,13 @@ router.get("/questions/sets", async (req, res) => {
     const sets = await Question.distinct("set", filter);
     res.json(sets.filter(Boolean));
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
-
 /* =========================================================
-   USER: GET TOPICS (SUBJECT + DEPARTMENT REQUIRED) ✅ FIXED
+   USER: GET TOPICS
    /api/questions/topics?department=CSE&subject=DS
 ========================================================= */
 router.get("/questions/topics", async (req, res) => {
@@ -200,7 +213,6 @@ router.get("/questions/topics", async (req, res) => {
     }
 
     const Question = QuestionModel();
-
     const topics = await Question.distinct("topic", {
       subject,
       department
@@ -208,6 +220,7 @@ router.get("/questions/topics", async (req, res) => {
 
     res.json(topics.filter(Boolean));
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -222,6 +235,7 @@ router.get("/questions/departments", async (req, res) => {
     const depts = await Question.distinct("department");
     res.json(depts.filter(Boolean));
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });

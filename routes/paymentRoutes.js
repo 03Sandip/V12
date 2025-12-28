@@ -1,22 +1,26 @@
-// routes/paymentRoutes.js
 const express = require('express');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
+
 const User = require('../models/User');
-const Coupon = require('../models/Coupon'); // 👈 IMPORTANT
+const Coupon = require('../models/Coupon');
+const Payment = require('../models/Payment'); // ✅ NEW
+
 const authMiddleware = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
+// --------------------------------
 // Razorpay instance
+// --------------------------------
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
-// ----------------------------
-// 1️⃣ CREATE ORDER (backend)
-// ----------------------------
+// --------------------------------
+// 1️⃣ CREATE ORDER
+// --------------------------------
 router.post('/create-order', async (req, res) => {
   try {
     const { amount } = req.body;
@@ -29,7 +33,7 @@ router.post('/create-order', async (req, res) => {
     }
 
     const options = {
-      amount: amount * 100, // ₹ → paise
+      amount: amount * 100, // rupees → paise
       currency: 'INR',
       receipt: 'receipt_' + Date.now(),
     };
@@ -50,8 +54,10 @@ router.post('/create-order', async (req, res) => {
 });
 
 // -----------------------------------------
-// 2️⃣ VERIFY PAYMENT + SAVE PURCHASED NOTES
-//    + INCREMENT COUPON USED COUNT
+// 2️⃣ VERIFY PAYMENT
+//    + UNLOCK NOTES
+//    + INCREMENT COUPON
+//    + SAVE PAYMENT HISTORY ✅
 // -----------------------------------------
 router.post('/verify', authMiddleware, async (req, res) => {
   try {
@@ -62,10 +68,12 @@ router.post('/verify', authMiddleware, async (req, res) => {
       razorpay_payment_id,
       razorpay_signature,
       cart = [],
-      appliedCouponCode,  // 👈 from frontend
+      appliedCouponCode,
     } = req.body;
 
-    // Validate required fields
+    // ----------------------------
+    // Validation
+    // ----------------------------
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
       return res.status(400).json({
         success: false,
@@ -73,16 +81,17 @@ router.post('/verify', authMiddleware, async (req, res) => {
       });
     }
 
-    // Step 1: Verify signature
+    // ----------------------------
+    // Step 1: Verify Razorpay signature
+    // ----------------------------
     const signData = razorpay_order_id + '|' + razorpay_payment_id;
 
     const expectedSignature = crypto
       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-      .update(signData.toString())
+      .update(signData)
       .digest('hex');
 
     const isValid = expectedSignature === razorpay_signature;
-    console.log('[/payment/verify] isValid =', isValid);
 
     if (!isValid) {
       return res.status(400).json({
@@ -91,51 +100,102 @@ router.post('/verify', authMiddleware, async (req, res) => {
       });
     }
 
-    // Step 2: Extract purchased note IDs from cart
+    // ----------------------------
+    // Step 2: Extract note IDs
+    // ----------------------------
     const noteIds = cart
-      .map((item) => item._id || item.id)
+      .map(item => item._id || item.id)
       .filter(Boolean);
 
-    console.log('[/payment/verify] noteIds =', noteIds);
-
-    // Step 3: Save purchased notes to user account
+    // ----------------------------
+    // Step 3: Unlock notes for user
+    // ----------------------------
     if (noteIds.length > 0) {
       await User.findByIdAndUpdate(
         req.user._id,
-        { $addToSet: { purchasedNotes: { $each: noteIds } } }, // no duplicates
+        { $addToSet: { purchasedNotes: { $each: noteIds } } },
         { new: true }
       );
     }
 
-    // Step 4: If a coupon was used, increment its usedCount
+    // ----------------------------
+    // Step 4: Coupon usage increment
+    // ----------------------------
     let updatedCoupon = null;
 
     if (appliedCouponCode) {
       const upperCode = String(appliedCouponCode).toUpperCase();
-      console.log('[/payment/verify] Coupon used =', upperCode);
 
       updatedCoupon = await Coupon.findOneAndUpdate(
         { code: upperCode },
         { $inc: { usedCount: 1 } },
         { new: true }
       );
-
-      console.log('[/payment/verify] Updated coupon =', updatedCoupon);
-    } else {
-      console.log('[/payment/verify] No coupon used in this payment');
     }
 
-    // Step 5: Success response
+    // ----------------------------
+    // ✅ Step 5: SAVE PAYMENT RECORD
+    // ----------------------------
+    const totalAmount = cart.reduce(
+      (sum, item) =>
+        sum + Number(item.discountPrice || item.originalPrice || 0),
+      0
+    );
+
+    await Payment.create({
+      user: req.user._id,
+
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+
+      amount: totalAmount,
+
+      items: cart.map(item => ({
+        noteId: item._id || item.id,
+        title: item.title,
+        price: Number(item.discountPrice || item.originalPrice || 0),
+      })),
+
+      couponCode: appliedCouponCode || null,
+      status: 'success',
+    });
+
+    // ----------------------------
+    // Step 6: Response
+    // ----------------------------
     return res.json({
       success: true,
       message: 'Payment verified successfully. Notes unlocked.',
-      coupon: updatedCoupon, // 👈 so you can see in frontend if it updated
+      coupon: updatedCoupon,
     });
   } catch (error) {
     console.error('Razorpay verify error:', error);
     return res.status(500).json({
       success: false,
       message: 'Payment verification failed',
+    });
+  }
+});
+
+// --------------------------------
+// ✅ 3️⃣ GET ALL PAYMENTS (ADMIN)
+// --------------------------------
+router.get('/all', async (req, res) => {
+  try {
+    const payments = await Payment.find()
+      .populate('user', 'name email')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.json({
+      success: true,
+      payments,
+    });
+  } catch (error) {
+    console.error('Fetch payments error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch payments',
     });
   }
 });
