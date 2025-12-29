@@ -12,9 +12,31 @@ connectDB();
 connectQuestionDB();
 
 const app = express();
-// Middlewares
-app.use(cors());
-app.use(express.json()); // to parse JSON bodies
+
+// ================= CORS (FIXED FOR LIVE SERVER) =================
+app.use(cors({
+  origin: [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:5500",
+    "http://127.0.0.1:5501",   // ✅ ADD THIS
+    "https://gonotes.shop",
+    "https://www.gonotes.shop"
+  ],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true
+}));
+
+app.options("*", cors());
+
+
+// IMPORTANT: allow preflight requests
+app.options("*", cors());
+
+// ================= BODY PARSER =================
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
 
 // ================= ROUTES =================
 const departmentRoutes = require("./routes/departmentRoutes");
