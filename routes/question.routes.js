@@ -119,7 +119,8 @@ router.get("/questions", async (req, res) => {
     const Question = QuestionModel();
 
     const filter = {};
-    ["subject", "topic", "department", "type", "set"].forEach((k) => { // ✅ set added
+
+    ["subject", "topic", "department", "type", "set"].forEach((k) => {
       if (req.query[k]) filter[k] = req.query[k];
     });
 
@@ -137,6 +138,7 @@ router.get("/questions", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 /* =========================================================
    USER: GET SUBJECTS
