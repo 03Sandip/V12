@@ -119,7 +119,7 @@ router.get("/questions", async (req, res) => {
     const Question = QuestionModel();
 
     const filter = {};
-    ["subject", "topic", "department", "type"].forEach((k) => {
+    ["subject", "topic", "department", "type", "set"].forEach((k) => { // ✅ set added
       if (req.query[k]) filter[k] = req.query[k];
     });
 
