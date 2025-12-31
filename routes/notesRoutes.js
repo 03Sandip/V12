@@ -378,7 +378,7 @@ router.get('/', async (req, res) => {
  * ✅ NEW: GET /api/notes/my-notes
  * Return all notes the logged-in user has purchased
  */
-router.get('/my-notes', authMiddleware, async (req, res) => {
+router.get('/mynotes', authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user._id)
       .populate({
@@ -389,12 +389,15 @@ router.get('/my-notes', authMiddleware, async (req, res) => {
       .lean()
       .exec();
 
-    const notes = (user?.purchasedNotes || []).map(mapNoteForList);
+    const notes = (user?.purchasedNotes || [])
+  .filter(Boolean)          // ✅ CRITICAL FIX
+  .map(mapNoteForList);
 
-    return res.json({
-      success: true,
-      notes
-    });
+return res.json({
+  success: true,
+  notes
+});
+
   } catch (err) {
     console.error('Fetch my-notes error:', err);
     res.status(500).json({ success: false, message: 'Cannot fetch notes' });

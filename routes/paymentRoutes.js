@@ -1,6 +1,7 @@
 const express = require('express');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
+const mongoose = require("mongoose");
 
 const User = require('../models/User');
 const Coupon = require('../models/Coupon');
@@ -61,8 +62,6 @@ router.post('/create-order', async (req, res) => {
 // -----------------------------------------
 router.post('/verify', authMiddleware, async (req, res) => {
   try {
-    console.log('[/payment/verify] BODY =', req.body);
-
     const {
       razorpay_order_id,
       razorpay_payment_id,
@@ -71,71 +70,50 @@ router.post('/verify', authMiddleware, async (req, res) => {
       appliedCouponCode,
     } = req.body;
 
-    // ----------------------------
-    // Validation
-    // ----------------------------
-    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing Razorpay verification parameters',
-      });
-    }
-
-    // ----------------------------
-    // Step 1: Verify Razorpay signature
-    // ----------------------------
+    // 1️⃣ Validate Razorpay signature
     const signData = razorpay_order_id + '|' + razorpay_payment_id;
-
     const expectedSignature = crypto
       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
       .update(signData)
       .digest('hex');
 
-    const isValid = expectedSignature === razorpay_signature;
-
-    if (!isValid) {
+    if (expectedSignature !== razorpay_signature) {
       return res.status(400).json({
         success: false,
         message: 'Invalid payment signature',
       });
     }
 
-    // ----------------------------
-    // Step 2: Extract note IDs
-    // ----------------------------
+    // 2️⃣ Extract VALID note ObjectIds
     const noteIds = cart
       .map(item => item._id || item.id)
-      .filter(Boolean);
+      .filter(id => mongoose.isValidObjectId(id))
+      .map(id => new mongoose.Types.ObjectId(id));
 
-    // ----------------------------
-    // Step 3: Unlock notes for user
-    // ----------------------------
-    if (noteIds.length > 0) {
-      await User.findByIdAndUpdate(
-        req.user._id,
-        { $addToSet: { purchasedNotes: { $each: noteIds } } },
-        { new: true }
-      );
+    if (noteIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No valid notes found in cart',
+      });
     }
 
-    // ----------------------------
-    // Step 4: Coupon usage increment
-    // ----------------------------
+    // 3️⃣ Unlock notes for user
+    await User.findByIdAndUpdate(
+      req.user._id,
+      { $addToSet: { purchasedNotes: { $each: noteIds } } }
+    );
+
+    // 4️⃣ Coupon usage increment
     let updatedCoupon = null;
-
     if (appliedCouponCode) {
-      const upperCode = String(appliedCouponCode).toUpperCase();
-
       updatedCoupon = await Coupon.findOneAndUpdate(
-        { code: upperCode },
+        { code: String(appliedCouponCode).toUpperCase() },
         { $inc: { usedCount: 1 } },
         { new: true }
       );
     }
 
-    // ----------------------------
-    // ✅ Step 5: SAVE PAYMENT RECORD
-    // ----------------------------
+    // 5️⃣ Save payment
     const totalAmount = cart.reduce(
       (sum, item) =>
         sum + Number(item.discountPrice || item.originalPrice || 0),
@@ -144,25 +122,15 @@ router.post('/verify', authMiddleware, async (req, res) => {
 
     await Payment.create({
       user: req.user._id,
-
       razorpayOrderId: razorpay_order_id,
       razorpayPaymentId: razorpay_payment_id,
-
       amount: totalAmount,
-
-      items: cart.map(item => ({
-        noteId: item._id || item.id,
-        title: item.title,
-        price: Number(item.discountPrice || item.originalPrice || 0),
-      })),
-
+      items: noteIds.map(id => ({ noteId: id })), // ✅ SAFE
       couponCode: appliedCouponCode || null,
       status: 'success',
     });
 
-    // ----------------------------
-    // Step 6: Response
-    // ----------------------------
+    // 6️⃣ Final response (ONLY ONCE)
     return res.json({
       success: true,
       message: 'Payment verified successfully. Notes unlocked.',
@@ -176,6 +144,7 @@ router.post('/verify', authMiddleware, async (req, res) => {
     });
   }
 });
+
 
 // --------------------------------
 // ✅ 3️⃣ GET ALL PAYMENTS (ADMIN)
