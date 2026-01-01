@@ -26,6 +26,8 @@ const couponRoutes = require("./routes/couponRoutes");
 const articleRoutes = require("./routes/articleRoutes");
 const pdfRoutes = require("./routes/pdfRoutes");
 const questionRoutes = require("./routes/question.routes"); // ✅ ADD THIS
+const receiptRoutes = require("./routes/receiptRoutes");
+
 
 app.use("/api/departments", departmentRoutes);
 app.use("/api/notes", notesRoutes);
@@ -36,6 +38,7 @@ app.use("/api", couponRoutes);
 app.use("/api", articleRoutes);
 app.use("/api", pdfRoutes);
 app.use("/api", questionRoutes); // ✅ ADD THIS
+app.use("/api/receipt", receiptRoutes);
 
 // app.use("/api", questionRoutes); // ← only if imported
 

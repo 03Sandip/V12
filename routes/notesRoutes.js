@@ -122,6 +122,31 @@ router.get('/departments', async (req, res) => {
 });
 
 /**
+ * ✅ GET /api/notes/all
+ * Return only _id and title (for payments lookup)
+ */
+router.get('/all', async (req, res) => {
+  try {
+    const notes = await Notes.find(
+      {},
+      { title: 1 }
+    ).lean();
+
+    res.json({
+      success: true,
+      notes
+    });
+  } catch (err) {
+    console.error('Notes all fetch error:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch notes'
+    });
+  }
+});
+
+
+/**
  * GET /api/notes/semesters/:deptIdentifier
  * deptIdentifier may be department _id (24 hex) or department name
  * returns { semesters: [...] }
@@ -537,6 +562,8 @@ router.delete('/:id', async (req, res) => {
     return res.status(500).json({ message: 'Server error' });
   }
 });
+
+
 
 /**
  * PUT /api/notes/:id

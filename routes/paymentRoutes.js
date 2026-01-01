@@ -5,7 +5,8 @@ const mongoose = require("mongoose");
 
 const User = require('../models/User');
 const Coupon = require('../models/Coupon');
-const Payment = require('../models/Payment'); // ✅ NEW
+const Payment = require('../models/Payment');
+const Notes = require('../models/notes'); // ✅ Notes model
 
 const authMiddleware = require('../middleware/authMiddleware');
 
@@ -26,7 +27,7 @@ router.post('/create-order', async (req, res) => {
   try {
     const { amount } = req.body;
 
-    if (!amount) {
+    if (!amount || amount <= 0) {
       return res.status(400).json({
         success: false,
         message: 'Amount is required',
@@ -58,7 +59,7 @@ router.post('/create-order', async (req, res) => {
 // 2️⃣ VERIFY PAYMENT
 //    + UNLOCK NOTES
 //    + INCREMENT COUPON
-//    + SAVE PAYMENT HISTORY ✅
+//    + SAVE PAYMENT HISTORY
 // -----------------------------------------
 router.post('/verify', authMiddleware, async (req, res) => {
   try {
@@ -66,11 +67,14 @@ router.post('/verify', authMiddleware, async (req, res) => {
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature,
-      cart = [],
+      cart,
+      item, // 👈 Buy Now support
       appliedCouponCode,
     } = req.body;
 
+    // ----------------------------
     // 1️⃣ Validate Razorpay signature
+    // ----------------------------
     const signData = razorpay_order_id + '|' + razorpay_payment_id;
     const expectedSignature = crypto
       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
@@ -84,26 +88,41 @@ router.post('/verify', authMiddleware, async (req, res) => {
       });
     }
 
-    // 2️⃣ Extract VALID note ObjectIds
-    const noteIds = cart
-      .map(item => item._id || item.id)
+    // ----------------------------
+    // 2️⃣ Normalize items (Cart OR Buy Now)
+    // ----------------------------
+    const itemsArray = Array.isArray(cart)
+      ? cart
+      : item
+      ? [item]
+      : [];
+
+    // ----------------------------
+    // 3️⃣ Extract VALID note ObjectIds
+    // ----------------------------
+    const noteIds = itemsArray
+      .map(i => i._id || i.id || i.noteId)
       .filter(id => mongoose.isValidObjectId(id))
       .map(id => new mongoose.Types.ObjectId(id));
 
     if (noteIds.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'No valid notes found in cart',
+        message: 'No valid notes found',
       });
     }
 
-    // 3️⃣ Unlock notes for user
+    // ----------------------------
+    // 4️⃣ Unlock notes for user
+    // ----------------------------
     await User.findByIdAndUpdate(
       req.user._id,
       { $addToSet: { purchasedNotes: { $each: noteIds } } }
     );
 
-    // 4️⃣ Coupon usage increment
+    // ----------------------------
+    // 5️⃣ Coupon usage increment
+    // ----------------------------
     let updatedCoupon = null;
     if (appliedCouponCode) {
       updatedCoupon = await Coupon.findOneAndUpdate(
@@ -113,24 +132,33 @@ router.post('/verify', authMiddleware, async (req, res) => {
       );
     }
 
-    // 5️⃣ Save payment
-    const totalAmount = cart.reduce(
-      (sum, item) =>
-        sum + Number(item.discountPrice || item.originalPrice || 0),
+    // ----------------------------
+    // 6️⃣ Calculate amount from DB (SECURE)
+    // ----------------------------
+    const notes = await Notes.find({ _id: { $in: noteIds } });
+
+    const totalAmount = notes.reduce(
+      (sum, note) =>
+        sum + Number(note.discountPrice || note.originalPrice || 0),
       0
     );
 
+    // ----------------------------
+    // 7️⃣ Save payment record
+    // ----------------------------
     await Payment.create({
       user: req.user._id,
       razorpayOrderId: razorpay_order_id,
       razorpayPaymentId: razorpay_payment_id,
       amount: totalAmount,
-      items: noteIds.map(id => ({ noteId: id })), // ✅ SAFE
+      items: noteIds.map(id => ({ noteId: id })),
       couponCode: appliedCouponCode || null,
       status: 'success',
     });
 
-    // 6️⃣ Final response (ONLY ONCE)
+    // ----------------------------
+    // 8️⃣ Final response
+    // ----------------------------
     return res.json({
       success: true,
       message: 'Payment verified successfully. Notes unlocked.',
@@ -145,7 +173,6 @@ router.post('/verify', authMiddleware, async (req, res) => {
   }
 });
 
-
 // --------------------------------
 // ✅ 3️⃣ GET ALL PAYMENTS (ADMIN)
 // --------------------------------
@@ -153,6 +180,10 @@ router.get('/all', async (req, res) => {
   try {
     const payments = await Payment.find()
       .populate('user', 'name email')
+      .populate({
+        path: 'items.noteId',
+        select: 'title'
+      })
       .sort({ createdAt: -1 })
       .lean();
 
@@ -168,5 +199,32 @@ router.get('/all', async (req, res) => {
     });
   }
 });
+
+// --------------------------------
+// ✅ 4️⃣ GET MY PAYMENTS (USER)
+// --------------------------------
+router.get("/my", authMiddleware, async (req, res) => {
+  try {
+    const payments = await Payment.find({ user: req.user._id })
+      .populate({
+        path: "items.noteId",
+        select: "title",
+      })
+      .sort({ createdAt: -1 });
+
+    return res.json({
+      success: true,
+      payments,
+    });
+  } catch (err) {
+    console.error("My payments error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load receipts",
+    });
+  }
+});
+
+
 
 module.exports = router;
