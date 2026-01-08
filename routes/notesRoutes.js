@@ -466,13 +466,13 @@ router.get('/view/:id', authMiddleware, async (req, res) => {
       return res.status(404).json({ message: 'Not found' });
 
     res.set({
-  'Content-Type': note.contentType || 'application/pdf',
-  'Content-Disposition': `inline; filename="${note.originalName || 'note.pdf'}"`,
-  'Content-Length': pdfBuffer.length,          // 🔥 REQUIRED
-  'Accept-Ranges': 'bytes',                    // 🔥 REQUIRED
-  'Cache-Control': 'no-store',
-  'X-Content-Type-Options': 'nosniff'
-});
+      'Content-Type': note.contentType || 'application/pdf',
+      'Content-Disposition': `inline; filename="${
+        note.originalName || 'note.pdf'
+      }"`,
+      
+      'Cache-Control': 'no-store'
+    });
 
     return res.send(note.fileData);
   } catch (err) {
