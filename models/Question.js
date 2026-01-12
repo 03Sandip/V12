@@ -87,16 +87,26 @@ const questionSchema = new mongoose.Schema(
       default: null // ✅ optional
     },
 
-    /* ===============================
+/* ===============================
        OPTIONAL Solution Link
     ================================ */
     solutionLink: {
       type: String,
-      default: null // ✅ optional
+      default: null
+    },
+
+    /* ===============================
+       OPTIONAL YouTube Link ✅
+    ================================ */
+    youtubeLink: {
+      type: String,
+      default: null,
+      trim: true
     }
   },
   { timestamps: true }
 );
+
 
 /* ===============================
    Bind model to DB2 ONLY

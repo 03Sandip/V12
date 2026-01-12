@@ -17,8 +17,16 @@ router.post(
 
       const data = {
         ...req.body,
-        options: req.body.options ? JSON.parse(req.body.options) : [],
-        correctAnswer: JSON.parse(req.body.correctAnswer)
+
+        options: req.body.options
+          ? JSON.parse(req.body.options)
+          : [],
+
+        correctAnswer: JSON.parse(req.body.correctAnswer),
+
+        // ✅ optional links
+        solutionLink: req.body.solutionLink || null,
+        youtubeLink: req.body.youtubeLink || null
       };
 
       // ✅ Cloudinary image handling
@@ -56,7 +64,12 @@ router.put(
         await cloudinary.uploader.destroy(existing.imagePublicId);
       }
 
-      const data = { ...req.body };
+      const data = {
+        ...req.body,
+
+        solutionLink: req.body.solutionLink || null,
+        youtubeLink: req.body.youtubeLink || null
+      };
 
       if (data.options) {
         data.options = JSON.parse(data.options);
@@ -67,8 +80,8 @@ router.put(
       }
 
       if (req.file) {
-        data.image = req.file.path;              // FULL URL
-        data.imagePublicId = req.file.filename; // public_id
+        data.image = req.file.path;
+        data.imagePublicId = req.file.filename;
       }
 
       const updated = await Question.findByIdAndUpdate(
@@ -128,9 +141,10 @@ router.get("/questions", async (req, res) => {
       filter.year = Number(req.query.year);
     }
 
-    const data = await Question
-      .find(filter)
-      .sort({ year: -1, createdAt: -1 });
+    const data = await Question.find(filter).sort({
+      year: -1,
+      createdAt: -1
+    });
 
     res.json(data);
   } catch (err) {
@@ -138,7 +152,6 @@ router.get("/questions", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 /* =========================================================
    USER: GET SUBJECTS
